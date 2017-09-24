@@ -1,0 +1,140 @@
+---
+title: "Practical ML Course Project"
+author: "Karthik Chawala"
+date: "September 24, 2017"
+output: html_document
+---
+
+# Project Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+### Data:
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Goal:
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+
+## Getting & Splitting the Data
+Firstly load the required R packages, get and split the data for traning and testing the models.
+```{r}
+# loading packages
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(knitr)
+
+set.seed(123)
+
+# get the data
+trainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training.data <- read.csv(url(trainURL), na.strings = c("NA","#DIV/0!",""))
+testing.data <- read.csv(url(testURL), na.strings = c("NA","#DIV/0!",""))
+
+## split the data
+inTrain <- createDataPartition(training.data$classe, p = 0.7, list = FALSE)
+my.Training <- training.data[inTrain, ]
+my.Testing <- training.data[-inTrain, ]
+
+dim(my.Training)
+dim(my.Testing)
+```
+
+##  Preparing the Data
+Secondly we will remove near zero variance variables and clean the training variables.
+```{r}
+# removing near zero variance variables
+nzv <- nearZeroVar(my.Training, saveMetrics = TRUE)
+my.Training <- my.Training[,nzv$nzv == FALSE]
+
+nzv <- nearZeroVar(my.Testing, saveMetrics = TRUE)
+my.Testing <- my.Testing[, nzv$nzv == FALSE]
+
+my.Training <- my.Training[c(-1)]
+
+# clean the variables
+training.temp <- my.Training
+for(i in 1:length(my.Training)) {
+  if(sum(is.na(my.Training[, i])) / nrow(my.Training) >= .7) {
+    for(j in 1:length(training.temp)) {
+      if(length(grep(names(my.Training[i]), names(training.temp)[j])) == 1){
+        training.temp <- training.temp[, -j]
+      }
+    }
+  }
+}
+
+my.Training <- training.temp
+```
+
+We will now prepare the training and testing data.
+```{r}
+clean.data1 <- colnames(my.Training)
+clean.data2 <- colnames(my.Training[ , -58])
+
+my.Testing <- my.Testing[clean.data1]
+testing.data <- testing.data[clean.data2] 
+
+dim(my.Testing)
+
+dim(testing.data)
+```
+
+```{r}
+# coerce the data
+for (i in 1:length(testing.data)) {
+  for(j in 1: length(my.Training)) {
+    if(length(grep(names(my.Training[i]), names(testing.data)[j])) ==1) {
+      class(testing.data[j]) <- class(my.Training[i])
+    }
+  }
+}
+
+testing.data <- rbind(my.Training[2, -58], testing.data)
+testing.data <- testing.data[-1,]
+```
+
+
+
+## Predicting with Random Forests
+```{r}
+set.seed(123)
+fit1 <- randomForest(classe ~ ., my.Training)
+prediction1 <- predict(fit1, my.Testing, type = "class")
+
+confusionMatrixRF <- confusionMatrix(prediction1, my.Testing$classe)
+confusionMatrixRF
+
+plot(fit1)
+
+plot(confusionMatrixRF$table, col = confusionMatrixRF$byClass, main = paste("RF Confusion Matrix: Accuracy =", round(confusionMatrixRF$overall['Accuracy'], 3)))
+```
+
+
+
+## Predicting with Decision Trees
+```{r}
+set.seed(123)
+fit2 <- rpart(classe ~ ., my.Training, method = "class")
+fancyRpartPlot(fit2)
+prediction2 <- predict(fit2, my.Testing, type = "class")
+
+confusionMatrixDT <- confusionMatrix(prediction2, my.Testing$classe)
+confusionMatrixDT
+
+plot(confusionMatrixDT$table, col = confusionMatrixDT$byClass, main = paste("DT Confusion Matrix: Accuracy =", round(confusionMatrixDT$overall['Accuracy'], 3)))
+```
+
+
+
+## Summary
+Since Random Forests prediction gave the most Accuracy of 99.9%. The expected out of sample error is 100-99.9 = 0.1%
